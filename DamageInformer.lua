@@ -126,6 +126,8 @@ local playerArmour = {}
 local playerSeat = {}
 local playerVehicle = {}
 local playerHealth = {}
+local lastDlOnVehicleHit = 0
+local VEH_DL_COOLDOWN_MS = 1500
 
 local function initSharedDamage()
     if g_diData ~= nil then
@@ -1340,6 +1342,12 @@ function onD3DPresent()
 
             if lastVehicleHealth ~= nil and hp < lastVehicleHealth then
                 local myX, myY, myZ = getCharCoordinates(PLAYER_PED)
+                local nowMs = msNow()
+                if nowMs - lastDlOnVehicleHit >= VEH_DL_COOLDOWN_MS then
+                    local cmd = "/dl"
+                    sampSendChat(cmd)
+                    lastDlOnVehicleHit = nowMs
+                end
 
                 for i = 0, sampGetMaxPlayerId() do
                     local myOk, myPid = sampGetPlayerIdByCharHandle(PLAYER_PED)
