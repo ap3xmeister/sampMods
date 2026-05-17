@@ -1814,8 +1814,8 @@ local settings = imgui.OnFrame(
                 pizza_boy_window[0] = false
             end
             if imgui.Button(u8("Start session"), imgui.ImVec2(120, 0)) then
-                if pizza_boy_window[0] then return end
-                pizza_boy_window[0] = true
+                if pizza_boy_session_window[0] then return end
+                pizza_boy_session_window[0] = true
                 pizza_boy_session = true
                 pizza_boy_session_stats.session_time = 0
                 pizza_boy_session_start = os.time()
