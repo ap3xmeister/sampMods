@@ -1350,7 +1350,7 @@ function onD3DPresent()
                             local px, py, pz = getCharCoordinates(ped)
                             local dist = getDistanceBetweenCoords3d(px, py, pz, myX, myY, myZ)
 
-                            if dist < 50.0 then
+                            if dist < 100.0 then
                                 local wpn = getCurrentCharWeapon(ped)
                                 if wpn > 0 then
                                     attackers[i] = {
