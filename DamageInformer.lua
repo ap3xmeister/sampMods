@@ -14,6 +14,7 @@ local imgui      = require "mimgui"
 local inicfg     = require "inicfg"
 local ec         = require "encoding"
 local ffi        = require "ffi"
+local vkeys      = require 'vkeys'
 local GetBonePosition = ffi.cast("int (__thiscall*)(void*, float*, int, bool)", 0x5E4280)
 
 ec.default = "CP1251"
@@ -273,6 +274,12 @@ local ini = inicfg.load({
     },
     skeleton_colors = {
         skeleton_r = 1.0, skeleton_g = 1.0, skeleton_b = 1.0,
+    },
+    keybinds = {
+        key_toggle_main = vkeys.VK_INSERT,
+        key_toggle_damageinformer = vkeys.VK_F2,
+        key_toggle_skeleton = vkeys.VK_F9,
+        key_toggle_tags = vkeys.VK_F10
     }
 }, "DamageInformer.ini")
 
@@ -966,6 +973,139 @@ local col_give    = imgui.new.float[3](ini.colors.given_r, ini.colors.given_g, i
 local col_take    = imgui.new.float[3](ini.colors.taken_r, ini.colors.taken_g, ini.colors.taken_b)
 local col_arrow   = imgui.new.float[3](ini.colors.arrow_r, ini.colors.arrow_g, ini.colors.arrow_b)
 
+local kb_menu       = imgui.new.int(ini.keybinds.key_toggle_main or vkeys.VK_INSERT)
+local kb_main       = imgui.new.int(ini.keybinds.key_toggle_damageinformer or vkeys.VK_F2)
+local kb_skeleton   = imgui.new.int(ini.keybinds.key_toggle_skeleton or vkeys.VK_F9)
+local kb_tags       = imgui.new.int(ini.keybinds.key_toggle_tags or vkeys.VK_F10)
+
+local function saveKeybinds()
+    ini.keybinds.key_toggle_main = kb_menu[0]
+    ini.keybinds.key_toggle_damageinformer = kb_main[0]
+    ini.keybinds.key_toggle_skeleton = kb_skeleton[0]
+    ini.keybinds.key_toggle_tags = kb_tags[0]
+    inicfg.save(ini, "DamageInformer.ini")
+end
+
+local function setDamageInformerEnabled(state)
+    g_enabled = state
+    cb_enabled[0] = state
+    ini.main.enabled = state
+    inicfg.save(ini, "DamageInformer.ini")
+end
+
+local function setSkeletonEnabled(state)
+    s_enabled = state
+    cb_skeleton[0] = state
+    ini.main.show_skeleton = state
+    inicfg.save(ini, "DamageInformer.ini")
+end
+
+local function setTagsEnabled(state)
+    w_enabled = state
+    cb_tags[0] = state
+    ini.main.show_tags = state
+    inicfg.save(ini, "DamageInformer.ini")
+end
+
+local function processKeybinds()
+    if waiting_bind ~= 0 then return end
+    if isKeyJustPressed(kb_menu[0]) then
+        wnd_open[0] = not wnd_open[0]
+    end
+
+    if isKeyJustPressed(kb_main[0]) then
+        setDamageInformerEnabled(not g_enabled)
+    end
+
+    if isKeyJustPressed(kb_skeleton[0]) then
+        setSkeletonEnabled(not s_enabled)
+    end
+
+    if isKeyJustPressed(kb_tags[0]) then
+        setTagsEnabled(not w_enabled)
+    end
+end
+
+local function getKeyName(vk)
+    local names = {
+        [vkeys.VK_INSERT] = "Insert",
+        [vkeys.VK_DELETE] = "Delete",
+        [vkeys.VK_HOME] = "Home",
+        [vkeys.VK_END] = "End",
+        [vkeys.VK_PRIOR] = "Page Up",
+        [vkeys.VK_NEXT] = "Page Down",
+        [vkeys.VK_SPACE] = "Space",
+        [vkeys.VK_TAB] = "Tab",
+        [vkeys.VK_RETURN] = "Enter",
+        [vkeys.VK_ESCAPE] = "Escape",
+        [vkeys.VK_BACK] = "Backspace",
+
+        [vkeys.VK_UP] = "Up Arrow",
+        [vkeys.VK_DOWN] = "Down Arrow",
+        [vkeys.VK_LEFT] = "Left Arrow",
+        [vkeys.VK_RIGHT] = "Right Arrow",
+
+        [vkeys.VK_SHIFT] = "Shift",
+        [vkeys.VK_CONTROL] = "Ctrl",
+        [vkeys.VK_MENU] = "Alt",
+        [vkeys.VK_LSHIFT] = "Left Shift",
+        [vkeys.VK_RSHIFT] = "Right Shift",
+        [vkeys.VK_LCONTROL] = "Left Ctrl",
+        [vkeys.VK_RCONTROL] = "Right Ctrl",
+        [vkeys.VK_LMENU] = "Left Alt",
+        [vkeys.VK_RMENU] = "Right Alt",
+
+        [vkeys.VK_F1] = "F1",
+        [vkeys.VK_F2] = "F2",
+        [vkeys.VK_F3] = "F3",
+        [vkeys.VK_F4] = "F4",
+        [vkeys.VK_F5] = "F5",
+        [vkeys.VK_F6] = "F6",
+        [vkeys.VK_F7] = "F7",
+        [vkeys.VK_F8] = "F8",
+        [vkeys.VK_F9] = "F9",
+        [vkeys.VK_F10] = "F10",
+        [vkeys.VK_F11] = "F11",
+        [vkeys.VK_F12] = "F12",
+    }
+
+    if names[vk] then
+        return names[vk]
+    end
+
+    if vk >= 0x30 and vk <= 0x39 then
+        return string.char(vk) -- 0-9
+    end
+
+    if vk >= 0x41 and vk <= 0x5A then
+        return string.char(vk) -- A-Z
+    end
+
+    return "VK_" .. tostring(vk)
+end
+
+local function captureKeybind()
+    if waiting_bind == 0 then return end
+
+    for vk = 1, 255 do
+        if isKeyJustPressed(vk) then
+            if waiting_bind == 1 then
+                kb_menu[0] = vk
+            elseif waiting_bind == 2 then
+                kb_main[0] = vk
+            elseif waiting_bind == 3 then
+                kb_skeleton[0] = vk
+            elseif waiting_bind == 4 then
+                kb_tags[0] = vk
+            end
+
+            saveKeybinds()
+            waiting_bind = 0
+            break
+        end
+    end
+end
+
 local function saveUiColors()
     ini.ui.window_r, ini.ui.window_g, ini.ui.window_b, ini.ui.window_a = ui_col_window[0], ui_col_window[1], ui_col_window[2], ui_col_window[3]
     ini.ui.top_r, ini.ui.top_g, ini.ui.top_b, ini.ui.top_a = ui_col_title[0], ui_col_title[1], ui_col_title[2], ui_col_title[3]
@@ -992,6 +1132,361 @@ local function saveUiColors()
     inicfg.save(ini, "DamageInformer.ini")
 end
 
+local function applyUiStyle()
+    local colors = imgui.GetStyle().Colors
+    colors[imgui.Col.WindowBg] = imgui.ImVec4(ui_col_window[0], ui_col_window[1], ui_col_window[2], ui_col_window[3])
+    colors[imgui.Col.TitleBg] = imgui.ImVec4(ui_col_title[0], ui_col_title[1], ui_col_title[2], ui_col_title[3])
+    colors[imgui.Col.TitleBgActive] = imgui.ImVec4(ui_col_title[0], ui_col_title[1], ui_col_title[2], ui_col_title[3])
+    colors[imgui.Col.FrameBg] = imgui.ImVec4(ui_col_frame[0], ui_col_frame[1], ui_col_frame[2], ui_col_frame[3])
+    colors[imgui.Col.Button] = imgui.ImVec4(ui_col_button[0], ui_col_button[1], ui_col_button[2], ui_col_button[3])
+    colors[imgui.Col.ButtonHovered] = imgui.ImVec4(ui_col_button_hov[0], ui_col_button_hov[1], ui_col_button_hov[2], ui_col_button_hov[3])
+    colors[imgui.Col.Tab] = imgui.ImVec4(ui_col_tab[0], ui_col_tab[1], ui_col_tab[2], ui_col_tab[3])
+    colors[imgui.Col.Text] = imgui.ImVec4(ui_col_text[0], ui_col_text[1], ui_col_text[2], ui_col_text[3])
+    colors[imgui.Col.FrameBgHovered] = imgui.ImVec4(ui_col_frame_hover[0], ui_col_frame_hover[1], ui_col_frame_hover[2], ui_col_frame_hover[3])
+    colors[imgui.Col.FrameBgActive] = imgui.ImVec4(ui_col_frame_active[0], ui_col_frame_active[1], ui_col_frame_active[2], ui_col_frame_active[3])
+    colors[imgui.Col.CheckMark] = imgui.ImVec4(ui_col_checkmark[0], ui_col_checkmark[1], ui_col_checkmark[2], ui_col_checkmark[3])
+    colors[imgui.Col.SliderGrab] = imgui.ImVec4(ui_col_slider[0], ui_col_slider[1], ui_col_slider[2], ui_col_slider[3])
+    colors[imgui.Col.SliderGrabActive] = imgui.ImVec4(ui_col_slider_active[0], ui_col_slider_active[1], ui_col_slider_active[2], ui_col_slider_active[3])
+    colors[imgui.Col.ButtonActive] = imgui.ImVec4(ui_col_button_active[0], ui_col_button_active[1], ui_col_button_active[2], ui_col_button_active[3])
+    colors[imgui.Col.TabHovered] = imgui.ImVec4(ui_col_tab_hover[0], ui_col_tab_hover[1], ui_col_tab_hover[2], ui_col_tab_hover[3])
+    colors[imgui.Col.TabActive] = imgui.ImVec4(ui_col_tab_active[0], ui_col_tab_active[1], ui_col_tab_active[2], ui_col_tab_active[3])
+end
+
+local function drawSettingsTab()
+    if imgui.BeginTabItem(u8("Settings")) then
+        current_tab[0] = 0
+
+        if imgui.Checkbox(u8("Enabled"), cb_enabled) then
+            g_enabled = cb_enabled[0]
+            ini.main.enabled = g_enabled
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.Separator()
+        imgui.TextDisabled(u8("Colors"))
+        if imgui.ColorEdit3(u8("Given damage##cg"), col_give) then
+            ini.colors.given_r, ini.colors.given_g, ini.colors.given_b =
+                col_give[0], col_give[1], col_give[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+        if imgui.ColorEdit3(u8("Taken damage##ct"), col_take) then
+            ini.colors.taken_r, ini.colors.taken_g, ini.colors.taken_b =
+                col_take[0], col_take[1], col_take[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+        if imgui.ColorEdit3(u8("Arrow / attacker##ca"), col_arrow) then
+            ini.colors.arrow_r, ini.colors.arrow_g, ini.colors.arrow_b =
+                col_arrow[0], col_arrow[1], col_arrow[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.Separator()
+        imgui.TextDisabled(u8("Arrow"))
+        if imgui.Checkbox(u8("Show arrow indicator"), cb_arrow) then
+            ini.main.show_arrow = cb_arrow[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+        if imgui.Checkbox(u8("Show attacker name"), cb_name) then
+            ini.main.show_name = cb_name[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+        if imgui.Checkbox(u8("Show attacker ID"), cb_id) then
+            ini.main.show_id = cb_id[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.PushItemWidth(180)
+        if imgui.SliderInt(u8("Arrow radius (px)##ar"), sl_radius, 60, 500, "%d px") then
+            ini.main.arrow_radius = sl_radius[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+        imgui.PopItemWidth()
+
+        imgui.Separator()
+        imgui.TextDisabled(u8("Damage numbers"))
+        imgui.PushItemWidth(180)
+
+        if imgui.SliderInt(u8("Font size##fs"), sl_fsize, 8, 48, "%d px") then
+            ini.main.font_size = sl_fsize[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Entry spacing##sp"), sl_spacing, 12, 80, "%d px") then
+            ini.main.entry_spacing = sl_spacing[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Lifetime (ms)##lf"), sl_life, 500, 5000, "%d ms") then
+            ini.main.life_ms = sl_life[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Max visible##mx"), sl_max, 1, 12, "%d") then
+            ini.main.max_entries = sl_max[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.PopItemWidth()
+
+        imgui.Separator()
+        imgui.TextDisabled(u8("Position"))
+        imgui.PushItemWidth(180)
+        local sw2, sh2 = getScreenResolution()
+        if imgui.SliderInt(u8("Anchor X##ax"), sl_ancX, 0, sw2, "%d") then
+            ini.main.anchor_x = sl_ancX[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+        if imgui.SliderInt(u8("Anchor Y##ay"), sl_ancY, 0, sh2, "%d") then
+            ini.main.anchor_y = sl_ancY[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.PopItemWidth()
+
+        imgui.Separator()
+        if imgui.Button(u8("Test entries"), imgui.ImVec2(130, 0)) then
+            addEntry("+24.3", ini.colors.given_r, ini.colors.given_g, ini.colors.given_b)
+            addEntry("-18.0", ini.colors.taken_r, ini.colors.taken_g, ini.colors.taken_b)
+            local x, y, z = getCharCoordinates(PLAYER_PED)
+            attackers[0] = { pid = 0, name = "TestPlayer", wx = x + 20, wy = y + 20, wz = z, spawnMs = msNow() }
+            attackers[1] = { pid = 1, name = "TestPlayer2", wx = x - 20, wy = y + 25, wz = z, spawnMs = msNow() }
+        end
+
+        imgui.TextDisabled(u8("/di to toggle"))
+        imgui.EndTabItem()
+    end
+end
+
+local function drawUiTab()
+    if imgui.BeginTabItem(u8("UI")) then
+        current_tab[0] = 2
+
+        imgui.Text(u8("Interface colors"))
+        imgui.Separator()
+
+        if imgui.ColorEdit4(u8("Window background##uiw"), ui_col_window) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Top bar##uit"), ui_col_title) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Frame background##uif"), ui_col_frame) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Frame hovered##uifh"), ui_col_frame_hover) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Frame active##uifa"), ui_col_frame_active) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Checkmark##uick"), ui_col_checkmark) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Slider grab##uisg"), ui_col_slider) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Slider grab active##uisga"), ui_col_slider_active) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Button##uib"), ui_col_button) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Button hovered##uibh"), ui_col_button_hov) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Button active##uiba"), ui_col_button_active) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Tab##uitab"), ui_col_tab) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Tab hovered##uitabh"), ui_col_tab_hover) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Tab active##uitaba"), ui_col_tab_active) then saveUiColors() end
+        if imgui.ColorEdit4(u8("Text##uitxt"), ui_col_text) then saveUiColors() end
+
+        imgui.Separator()
+        if imgui.Button(u8("Reset UI colors"), imgui.ImVec2(140, 0)) then
+            ui_col_window[0], ui_col_window[1], ui_col_window[2], ui_col_window[3] = 0.10, 0.10, 0.10, 0.94
+            ui_col_title[0], ui_col_title[1], ui_col_title[2], ui_col_title[3] = 0.16, 0.29, 0.48, 1.00
+            ui_col_frame[0], ui_col_frame[1], ui_col_frame[2], ui_col_frame[3] = 0.16, 0.29, 0.48, 0.54
+            ui_col_frame_hover[0], ui_col_frame_hover[1], ui_col_frame_hover[2], ui_col_frame_hover[3] = 0.26, 0.59, 0.98, 0.40
+            ui_col_frame_active[0], ui_col_frame_active[1], ui_col_frame_active[2], ui_col_frame_active[3] = 0.26, 0.59, 0.98, 0.67
+            ui_col_checkmark[0], ui_col_checkmark[1], ui_col_checkmark[2], ui_col_checkmark[3] = 0.26, 0.59, 0.98, 1.00
+            ui_col_slider[0], ui_col_slider[1], ui_col_slider[2], ui_col_slider[3] = 0.24, 0.52, 0.88, 1.00
+            ui_col_slider_active[0], ui_col_slider_active[1], ui_col_slider_active[2], ui_col_slider_active[3] = 0.26, 0.59, 0.98, 1.00
+            ui_col_button[0], ui_col_button[1], ui_col_button[2], ui_col_button[3] = 0.26, 0.59, 0.98, 0.40
+            ui_col_button_hov[0], ui_col_button_hov[1], ui_col_button_hov[2], ui_col_button_hov[3] = 0.26, 0.59, 0.98, 1.00
+            ui_col_button_active[0], ui_col_button_active[1], ui_col_button_active[2], ui_col_button_active[3] = 0.06, 0.53, 0.98, 1.00
+            ui_col_tab[0], ui_col_tab[1], ui_col_tab[2], ui_col_tab[3] = 0.18, 0.35, 0.58, 0.86
+            ui_col_tab_hover[0], ui_col_tab_hover[1], ui_col_tab_hover[2], ui_col_tab_hover[3] = 0.26, 0.59, 0.98, 0.80
+            ui_col_tab_active[0], ui_col_tab_active[1], ui_col_tab_active[2], ui_col_tab_active[3] = 0.20, 0.41, 0.68, 1.00
+            ui_col_text[0], ui_col_text[1], ui_col_text[2], ui_col_text[3] = 1.00, 1.00, 1.00, 1.00
+            saveUiColors()
+        end
+
+        imgui.EndTabItem()
+    end
+end
+
+local function drawNametagsTab()
+    if imgui.BeginTabItem(u8("Nametags")) then
+        current_tab[0] = 3
+
+        if imgui.Checkbox(u8("Show nearby player tags"), cb_tags) then
+            w_enabled = cb_tags[0]
+            ini.main.show_tags = w_enabled
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+        imgui.Separator()
+
+        imgui.TextDisabled(u8("Nearby tags"))
+        imgui.PushItemWidth(180)
+
+        if imgui.SliderInt(u8("Tag font size##tfs"), sl_tagFont, 6, 24, "%d px") then
+            ini.main.tag_font_size = sl_tagFont[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Tag bar width##tbw"), sl_tagBarW, 10, 80, "%d px") then
+            ini.main.tag_bar_width = sl_tagBarW[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Tag bar height##tbh"), sl_tagBarH, 2, 12, "%d px") then
+            ini.main.tag_bar_height = sl_tagBarH[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Tag Y offset##tyo"), sl_tagY, -20, 20, "%d") then
+            ini.main.tag_y_offset = sl_tagY[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Tag bar Y offset##tbyo"), sl_tagBarY, -20, 20, "%d") then
+            ini.main.tag_bar_y_offset = sl_tagBarY[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.SliderInt(u8("Player overlay distance##pod"), sl_overlayDist, 5, 20000, "%d m") then
+            ini.main.player_overlay_distance = sl_overlayDist[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.Separator()
+        imgui.TextDisabled(u8("Health/Armour bar colors"))
+        imgui.PushItemWidth(180)
+
+        if imgui.ColorEdit3(u8("Health high##chh"), col_hp_high) then
+            ini.nametag_colors.hp_high_r, ini.nametag_colors.hp_high_g, ini.nametag_colors.hp_high_b =
+                col_hp_high[0], col_hp_high[1], col_hp_high[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.ColorEdit3(u8("Health medium##chm"), col_hp_mid) then
+            ini.nametag_colors.hp_mid_r, ini.nametag_colors.hp_mid_g, ini.nametag_colors.hp_mid_b =
+                col_hp_mid[0], col_hp_mid[1], col_hp_mid[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.ColorEdit3(u8("Health low##chl"), col_hp_low) then
+            ini.nametag_colors.hp_low_r, ini.nametag_colors.hp_low_g, ini.nametag_colors.hp_low_b =
+                col_hp_low[0], col_hp_low[1], col_hp_low[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.ColorEdit3(u8("Armour bar##car"), col_armour) then
+            ini.nametag_colors.armour_r, ini.nametag_colors.armour_g, ini.nametag_colors.armour_b =
+                col_armour[0], col_armour[1], col_armour[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.ColorEdit3(u8("Health background##chbg"), col_hp_bg) then
+            ini.nametag_colors.hp_bg_r, ini.nametag_colors.hp_bg_g, ini.nametag_colors.hp_bg_b =
+                col_hp_bg[0], col_hp_bg[1], col_hp_bg[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.ColorEdit3(u8("Armour background##cabg"), col_armour_bg) then
+            ini.nametag_colors.armour_bg_r, ini.nametag_colors.armour_bg_g, ini.nametag_colors.armour_bg_b =
+                col_armour_bg[0], col_armour_bg[1], col_armour_bg[2]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.PopItemWidth()
+        imgui.Spacing()
+        imgui.EndTabItem()
+    end
+end
+
+local function drawSkeletonTab()
+    if imgui.BeginTabItem(u8("Skeleton")) then
+        current_tab[0] = 4
+
+        imgui.Text(u8("Skeleton"))
+
+        if imgui.Checkbox(u8("Show skeleton"), cb_skeleton) then
+            s_enabled = cb_skeleton[0]
+            ini.main.show_skeleton = s_enabled
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        if imgui.Checkbox(u8("Use nametag colors"), cb_skeleton_nametag) then
+            ini.main.skeleton_use_nametag_colors = cb_skeleton_nametag[0]
+            inicfg.save(ini, "DamageInformer.ini")
+        end
+
+        imgui.Separator()
+        imgui.TextDisabled(u8("Skeleton color"))
+        imgui.PushItemWidth(180)
+
+        if not cb_skeleton_nametag[0] then
+            if imgui.ColorEdit3(u8("Custom skeleton##csk"), col_skeleton) then
+                ini.skeleton_colors.skeleton_r, ini.skeleton_colors.skeleton_g, ini.skeleton_colors.skeleton_b =
+                    col_skeleton[0], col_skeleton[1], col_skeleton[2]
+                inicfg.save(ini, "DamageInformer.ini")
+            end
+        end
+
+        imgui.PopItemWidth()
+        imgui.Spacing()
+        imgui.EndTabItem()
+    end
+end
+
+local function drawKeybindRow(label, keyVar, bindId)
+    imgui.Text(u8(label))
+    imgui.SameLine(170)
+
+    local shownText = waiting_bind == bindId and "Press any key..." or getKeyName(keyVar[0])
+    imgui.TextDisabled(u8(shownText))
+    imgui.SameLine(300)
+
+    if waiting_bind == bindId then
+        if imgui.Button(u8("Cancel##" .. bindId), imgui.ImVec2(80, 0)) then
+            waiting_bind = 0
+        end
+    else
+        if imgui.Button(u8("Change##" .. bindId), imgui.ImVec2(80, 0)) then
+            waiting_bind = bindId
+        end
+    end
+end
+
+local function drawKeybindsTab()
+    if imgui.BeginTabItem(u8("Keybinds")) then
+        current_tab[0] = 5
+
+        imgui.TextDisabled(u8("Click Change, then press a key"))
+        imgui.Separator()
+        imgui.Spacing()
+
+        drawKeybindRow("Menu toggle", kb_menu, 1)
+        drawKeybindRow("DamageInformer toggle", kb_main, 2)
+        drawKeybindRow("Skeleton toggle", kb_skeleton, 3)
+        drawKeybindRow("Nametags toggle", kb_tags, 4)
+
+        imgui.Spacing()
+        imgui.Separator()
+        imgui.EndTabItem()
+    end
+end
+
+local function drawCreditsTab()
+    if imgui.BeginTabItem(u8("Credits")) then
+        current_tab[0] = 1
+
+        imgui.Text(u8("Damage Informer"))
+        imgui.Separator()
+        imgui.TextWrapped(u8("Special thanks to everyone who helped build, test, and improve this script."))
+
+        imgui.Spacing()
+        imgui.BulletText(u8("Owner / concept: Apex"))
+        imgui.BulletText(u8("Lua logic / integration: Apex"))
+        imgui.BulletText(u8("ASI renderer / C++ bridge: Apex"))
+        imgui.BulletText(u8("Beta Tester: BONi, lik3me"))
+        imgui.BulletText(u8("Dinamovist Muist: nonamexdd"))
+
+        imgui.Spacing()
+        imgui.EndTabItem()
+    end
+end
+
 local settings = imgui.OnFrame(
     function() return wnd_open[0] end,
     function(self)
@@ -1003,26 +1498,8 @@ local settings = imgui.OnFrame(
             imgui.ImVec2(0.5, 0.5)
         )
 
-        -- UI style colors
-        local style = imgui.GetStyle()
-        local colors = style.Colors
+        applyUiStyle()
 
-        colors[imgui.Col.WindowBg]         = imgui.ImVec4(ui_col_window[0], ui_col_window[1], ui_col_window[2], ui_col_window[3])
-        colors[imgui.Col.TitleBg]          = imgui.ImVec4(ui_col_title[0], ui_col_title[1], ui_col_title[2], ui_col_title[3])
-        colors[imgui.Col.TitleBgActive]    = imgui.ImVec4(ui_col_title[0], ui_col_title[1], ui_col_title[2], ui_col_title[3])
-        colors[imgui.Col.FrameBg]          = imgui.ImVec4(ui_col_frame[0], ui_col_frame[1], ui_col_frame[2], ui_col_frame[3])
-        colors[imgui.Col.Button]           = imgui.ImVec4(ui_col_button[0], ui_col_button[1], ui_col_button[2], ui_col_button[3])
-        colors[imgui.Col.ButtonHovered]    = imgui.ImVec4(ui_col_button_hov[0], ui_col_button_hov[1], ui_col_button_hov[2], ui_col_button_hov[3])
-        colors[imgui.Col.Tab]              = imgui.ImVec4(ui_col_tab[0], ui_col_tab[1], ui_col_tab[2], ui_col_tab[3])
-        colors[imgui.Col.Text]             = imgui.ImVec4(ui_col_text[0], ui_col_text[1], ui_col_text[2], ui_col_text[3])
-        colors[imgui.Col.FrameBgHovered]   = imgui.ImVec4(ui_col_frame_hover[0], ui_col_frame_hover[1], ui_col_frame_hover[2], ui_col_frame_hover[3])
-        colors[imgui.Col.FrameBgActive]    = imgui.ImVec4(ui_col_frame_active[0], ui_col_frame_active[1], ui_col_frame_active[2], ui_col_frame_active[3])
-        colors[imgui.Col.CheckMark]        = imgui.ImVec4(ui_col_checkmark[0], ui_col_checkmark[1], ui_col_checkmark[2], ui_col_checkmark[3])
-        colors[imgui.Col.SliderGrab]       = imgui.ImVec4(ui_col_slider[0], ui_col_slider[1], ui_col_slider[2], ui_col_slider[3])
-        colors[imgui.Col.SliderGrabActive] = imgui.ImVec4(ui_col_slider_active[0], ui_col_slider_active[1], ui_col_slider_active[2], ui_col_slider_active[3])
-        colors[imgui.Col.ButtonActive]     = imgui.ImVec4(ui_col_button_active[0], ui_col_button_active[1], ui_col_button_active[2], ui_col_button_active[3])
-        colors[imgui.Col.TabHovered]       = imgui.ImVec4(ui_col_tab_hover[0], ui_col_tab_hover[1], ui_col_tab_hover[2], ui_col_tab_hover[3])
-        colors[imgui.Col.TabActive]         = imgui.ImVec4(ui_col_tab_active[0], ui_col_tab_active[1], ui_col_tab_active[2], ui_col_tab_active[3])
         imgui.Begin(
             u8("DamageInformer v6.0"),
             wnd_open,
@@ -1030,293 +1507,12 @@ local settings = imgui.OnFrame(
         )
 
         if imgui.BeginTabBar("##ditabs") then
-            if imgui.BeginTabItem(u8("Settings")) then
-                current_tab[0] = 0
-
-                if imgui.Checkbox(u8("Enabled"), cb_enabled) then
-                    g_enabled = cb_enabled[0]
-                    ini.main.enabled = g_enabled
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                imgui.Separator()
-                imgui.TextDisabled(u8("Colors"))
-                if imgui.ColorEdit3(u8("Given damage##cg"), col_give) then
-                    ini.colors.given_r, ini.colors.given_g, ini.colors.given_b =
-                        col_give[0], col_give[1], col_give[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                if imgui.ColorEdit3(u8("Taken damage##ct"), col_take) then
-                    ini.colors.taken_r, ini.colors.taken_g, ini.colors.taken_b =
-                        col_take[0], col_take[1], col_take[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                if imgui.ColorEdit3(u8("Arrow / attacker##ca"), col_arrow) then
-                    ini.colors.arrow_r, ini.colors.arrow_g, ini.colors.arrow_b =
-                        col_arrow[0], col_arrow[1], col_arrow[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                imgui.Separator()
-                imgui.TextDisabled(u8("Arrow"))
-                if imgui.Checkbox(u8("Show arrow indicator"), cb_arrow) then
-                    ini.main.show_arrow = cb_arrow[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                if imgui.Checkbox(u8("Show attacker name"), cb_name) then
-                    ini.main.show_name = cb_name[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                if imgui.Checkbox(u8("Show attacker ID"), cb_id) then
-                    ini.main.show_id = cb_id[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                imgui.PushItemWidth(180)
-                if imgui.SliderInt(u8("Arrow radius (px)##ar"), sl_radius, 60, 500, "%d px") then
-                    ini.main.arrow_radius = sl_radius[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                imgui.PopItemWidth()
-
-                imgui.Separator()
-                imgui.TextDisabled(u8("Damage numbers"))
-                imgui.PushItemWidth(180)
-
-                if imgui.SliderInt(u8("Font size##fs"), sl_fsize, 8, 48, "%d px") then
-                    ini.main.font_size = sl_fsize[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Entry spacing##sp"), sl_spacing, 12, 80, "%d px") then
-                    ini.main.entry_spacing = sl_spacing[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Lifetime (ms)##lf"), sl_life, 500, 5000, "%d ms") then
-                    ini.main.life_ms = sl_life[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Max visible##mx"), sl_max, 1, 12, "%d") then
-                    ini.main.max_entries = sl_max[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                imgui.PopItemWidth()
-
-                imgui.Separator()
-                imgui.TextDisabled(u8("Position"))
-                imgui.PushItemWidth(180)
-                local sw2, sh2 = getScreenResolution()
-                if imgui.SliderInt(u8("Anchor X##ax"), sl_ancX, 0, sw2, "%d") then
-                    ini.main.anchor_x = sl_ancX[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                if imgui.SliderInt(u8("Anchor Y##ay"), sl_ancY, 0, sh2, "%d") then
-                    ini.main.anchor_y = sl_ancY[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                imgui.PopItemWidth()
-
-                imgui.Separator()
-                if imgui.Button(u8("Test entries"), imgui.ImVec2(130, 0)) then
-                    addEntry("+24.3", ini.colors.given_r, ini.colors.given_g, ini.colors.given_b)
-                    addEntry("-18.0", ini.colors.taken_r, ini.colors.taken_g, ini.colors.taken_b)
-                    local x, y, z = getCharCoordinates(PLAYER_PED)
-                    attackers[0] = { pid = 0, name = "TestPlayer", wx = x + 20, wy = y + 20, wz = z, spawnMs = msNow() }
-                    attackers[1] = { pid = 1, name = "TestPlayer2", wx = x - 20, wy = y + 25, wz = z, spawnMs = msNow() }
-                end
-
-                imgui.TextDisabled(u8("/di to toggle"))
-                imgui.EndTabItem()
-            end
-
-            if imgui.BeginTabItem(u8("UI")) then
-                current_tab[0] = 2
-
-                imgui.Text(u8("Interface colors"))
-                imgui.Separator()
-
-                if imgui.ColorEdit4(u8("Window background##uiw"), ui_col_window) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Top bar##uit"), ui_col_title) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Frame background##uif"), ui_col_frame) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Frame hovered##uifh"), ui_col_frame_hover) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Frame active##uifa"), ui_col_frame_active) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Checkmark##uick"), ui_col_checkmark) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Slider grab##uisg"), ui_col_slider) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Slider grab active##uisga"), ui_col_slider_active) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Button##uib"), ui_col_button) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Button hovered##uibh"), ui_col_button_hov) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Button active##uiba"), ui_col_button_active) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Tab##uitab"), ui_col_tab) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Tab hovered##uitabh"), ui_col_tab_hover) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Tab active##uitaba"), ui_col_tab_active) then saveUiColors() end
-                if imgui.ColorEdit4(u8("Text##uitxt"), ui_col_text) then saveUiColors() end
-
-                imgui.Separator()
-                if imgui.Button(u8("Reset UI colors"), imgui.ImVec2(140, 0)) then
-                    ui_col_window[0], ui_col_window[1], ui_col_window[2], ui_col_window[3] = 0.10, 0.10, 0.10, 0.94
-                    ui_col_title[0], ui_col_title[1], ui_col_title[2], ui_col_title[3] = 0.16, 0.29, 0.48, 1.00
-                    ui_col_frame[0], ui_col_frame[1], ui_col_frame[2], ui_col_frame[3] = 0.16, 0.29, 0.48, 0.54
-                    ui_col_frame_hover[0], ui_col_frame_hover[1], ui_col_frame_hover[2], ui_col_frame_hover[3] = 0.26, 0.59, 0.98, 0.40
-                    ui_col_frame_active[0], ui_col_frame_active[1], ui_col_frame_active[2], ui_col_frame_active[3] = 0.26, 0.59, 0.98, 0.67
-                    ui_col_checkmark[0], ui_col_checkmark[1], ui_col_checkmark[2], ui_col_checkmark[3] = 0.26, 0.59, 0.98, 1.00
-                    ui_col_slider[0], ui_col_slider[1], ui_col_slider[2], ui_col_slider[3] = 0.24, 0.52, 0.88, 1.00
-                    ui_col_slider_active[0], ui_col_slider_active[1], ui_col_slider_active[2], ui_col_slider_active[3] = 0.26, 0.59, 0.98, 1.00
-                    ui_col_button[0], ui_col_button[1], ui_col_button[2], ui_col_button[3] = 0.26, 0.59, 0.98, 0.40
-                    ui_col_button_hov[0], ui_col_button_hov[1], ui_col_button_hov[2], ui_col_button_hov[3] = 0.26, 0.59, 0.98, 1.00
-                    ui_col_button_active[0], ui_col_button_active[1], ui_col_button_active[2], ui_col_button_active[3] = 0.06, 0.53, 0.98, 1.00
-                    ui_col_tab[0], ui_col_tab[1], ui_col_tab[2], ui_col_tab[3] = 0.18, 0.35, 0.58, 0.86
-                    ui_col_tab_hover[0], ui_col_tab_hover[1], ui_col_tab_hover[2], ui_col_tab_hover[3] = 0.26, 0.59, 0.98, 0.80
-                    ui_col_tab_active[0], ui_col_tab_active[1], ui_col_tab_active[2], ui_col_tab_active[3] = 0.20, 0.41, 0.68, 1.00
-                    ui_col_text[0], ui_col_text[1], ui_col_text[2], ui_col_text[3] = 1.00, 1.00, 1.00, 1.00
-                    saveUiColors()
-                end
-
-                imgui.EndTabItem()
-            end
-
-            if imgui.BeginTabItem(u8("Nametags")) then
-                current_tab[0] = 3
-
-                
-                if imgui.Checkbox(u8("Show nearby player tags"), cb_tags) then
-                    w_enabled = cb_tags[0]
-                    ini.main.show_tags = w_enabled
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                imgui.Separator()
-
-                imgui.TextDisabled(u8("Nearby tags"))
-                imgui.PushItemWidth(180)
-
-                if imgui.SliderInt(u8("Tag font size##tfs"), sl_tagFont, 6, 24, "%d px") then
-                    ini.main.tag_font_size = sl_tagFont[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Tag bar width##tbw"), sl_tagBarW, 10, 80, "%d px") then
-                    ini.main.tag_bar_width = sl_tagBarW[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Tag bar height##tbh"), sl_tagBarH, 2, 12, "%d px") then
-                    ini.main.tag_bar_height = sl_tagBarH[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Tag Y offset##tyo"), sl_tagY, -20, 20, "%d") then
-                    ini.main.tag_y_offset = sl_tagY[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Tag bar Y offset##tbyo"), sl_tagBarY, -20, 20, "%d") then
-                    ini.main.tag_bar_y_offset = sl_tagBarY[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.SliderInt(u8("Player overlay distance##pod"), sl_overlayDist, 5, 20000, "%d m") then
-                    ini.main.player_overlay_distance = sl_overlayDist[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-                imgui.Separator()
-                imgui.TextDisabled(u8("Health/Armour bar colors"))
-                imgui.PushItemWidth(180)
-
-                if imgui.ColorEdit3(u8("Health high##chh"), col_hp_high) then
-                    ini.nametag_colors.hp_high_r, ini.nametag_colors.hp_high_g, ini.nametag_colors.hp_high_b =
-                        col_hp_high[0], col_hp_high[1], col_hp_high[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.ColorEdit3(u8("Health medium##chm"), col_hp_mid) then
-                    ini.nametag_colors.hp_mid_r, ini.nametag_colors.hp_mid_g, ini.nametag_colors.hp_mid_b =
-                        col_hp_mid[0], col_hp_mid[1], col_hp_mid[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.ColorEdit3(u8("Health low##chl"), col_hp_low) then
-                    ini.nametag_colors.hp_low_r, ini.nametag_colors.hp_low_g, ini.nametag_colors.hp_low_b =
-                        col_hp_low[0], col_hp_low[1], col_hp_low[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.ColorEdit3(u8("Armour bar##car"), col_armour) then
-                    ini.nametag_colors.armour_r, ini.nametag_colors.armour_g, ini.nametag_colors.armour_b =
-                        col_armour[0], col_armour[1], col_armour[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.ColorEdit3(u8("Health background##chbg"), col_hp_bg) then
-                    ini.nametag_colors.hp_bg_r, ini.nametag_colors.hp_bg_g, ini.nametag_colors.hp_bg_b =
-                        col_hp_bg[0], col_hp_bg[1], col_hp_bg[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.ColorEdit3(u8("Armour background##cabg"), col_armour_bg) then
-                    ini.nametag_colors.armour_bg_r, ini.nametag_colors.armour_bg_g, ini.nametag_colors.armour_bg_b =
-                        col_armour_bg[0], col_armour_bg[1], col_armour_bg[2]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                imgui.PopItemWidth()
-                imgui.Spacing()
-                imgui.EndTabItem()
-            end
-
-            if imgui.BeginTabItem(u8("Skeleton")) then
-                current_tab[0] = 4
-
-                imgui.Text(u8("Skeleton"))
-
-                if imgui.Checkbox(u8("Show skeleton"), cb_skeleton) then
-                    s_enabled = cb_skeleton[0]
-                    ini.main.show_skeleton = s_enabled
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                if imgui.Checkbox(u8("Use nametag colors"), cb_skeleton_nametag) then
-                    ini.main.skeleton_use_nametag_colors = cb_skeleton_nametag[0]
-                    inicfg.save(ini, "DamageInformer.ini")
-                end
-
-                imgui.Separator()
-                imgui.TextDisabled(u8("Skeleton color"))
-                imgui.PushItemWidth(180)
-
-                if not cb_skeleton_nametag[0] then
-                    if imgui.ColorEdit3(u8("Custom skeleton##csk"), col_skeleton) then
-                        ini.skeleton_colors.skeleton_r, ini.skeleton_colors.skeleton_g, ini.skeleton_colors.skeleton_b =
-                            col_skeleton[0], col_skeleton[1], col_skeleton[2]
-                        inicfg.save(ini, "DamageInformer.ini")
-                    end
-                end
-
-                imgui.PopItemWidth()
-                imgui.Spacing()
-                imgui.EndTabItem()
-            end
-
-            if imgui.BeginTabItem(u8("Credits")) then
-                current_tab[0] = 1
-
-                imgui.Text(u8("Damage Informer"))
-                imgui.Separator()
-                imgui.TextWrapped(u8("Special thanks to everyone who helped build, test, and improve this script."))
-
-                imgui.Spacing()
-                imgui.BulletText(u8("Owner / concept: Apex"))
-                imgui.BulletText(u8("Lua logic / integration: Apex"))
-                imgui.BulletText(u8("ASI renderer / C++ bridge: Apex"))
-                imgui.BulletText(u8("Beta Tester: BONi, lik3me"))
-                imgui.BulletText(u8("Dinamovist Muist: nonamexdd"))
-
-                imgui.Spacing()
-                imgui.EndTabItem()
-            end
-
+            drawSettingsTab()
+            drawUiTab()
+            drawNametagsTab()
+            drawSkeletonTab()
+            drawKeybindsTab()
+            drawCreditsTab()
             imgui.EndTabBar()
         end
 
@@ -1344,8 +1540,7 @@ function onD3DPresent()
                 local myX, myY, myZ = getCharCoordinates(PLAYER_PED)
                 local nowMs = msNow()
                 if nowMs - lastDlOnVehicleHit >= VEH_DL_COOLDOWN_MS then
-                    local cmd = "/dl"
-                    sampSendChat(cmd)
+                    sampProcessChatInput("/dl")
                     lastDlOnVehicleHit = nowMs
                 end
 
@@ -1427,5 +1622,7 @@ function main()
 
     while true do
         wait(0)
+        captureKeybind()
+        processKeybinds()
     end
 end
